@@ -898,7 +898,7 @@ html[data-theme="light"] .phase-line{color:#0b1f3a}
     </button>
   </div>
   <div style="margin-top:18px; font-size:12px; letter-spacing:.05em; color:rgba(245,241,230,0.35);">
-    © <span id="creditYearSelect"></span> · Developed by PEAK PLUSE
+    © <span id="creditYearSelect"></span> · Developed by Y.M V A D Yapa
   </div>
 </div>
 
@@ -1424,7 +1424,7 @@ html[data-theme="light"] .phase-line{color:#0b1f3a}
       tossWinner:'', centerPassTeam:'',
       timeoutActive:false, timeoutRemaining:0, timeoutStartedAt:null, wastedTimeStartedAt:null,
       controlConnected:false, pairingCodeVisible:true,
-      shotsA:{gs:0, ga:0}, shotsB:{gs:0, ga:0}, setsA:0, setsB:0, toA:0, toB:0, timeoutTeam:'', serveStartedAt:null, setResults:[], pointLog:[], matchWinner:'',
+      shotsA:{gs:0, ga:0}, shotsB:{gs:0, ga:0}, setsA:0, setsB:0, toA:0, toB:0, timeoutTeam:'', serveStartedAt:null, warmBeepAt:null, setResults:[], pointLog:[], matchWinner:'',
       rosterA:[], rosterB:[],
       shotLog:[], subLog:[],
       leftLogoUrl:'', rightLogoUrl:'', leftOrgName:'', rightOrgName:'',
@@ -1901,7 +1901,26 @@ html[data-theme="light"] .phase-line{color:#0b1f3a}
   }
 
   /* ---------- render ---------- */
-  let lastServeBeepFor = null, serveAudio = null;
+  let lastServeBeepFor = null, serveAudio = null, lastWarmBeepAt = null;
+  function playBeep(ms, freq){
+    try{
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if(!AC) return;
+      serveAudio = serveAudio || new AC();
+      if(serveAudio.state === 'suspended') serveAudio.resume();
+      const o = serveAudio.createOscillator(), g = serveAudio.createGain();
+      o.type = 'square'; o.frequency.value = freq || 880; g.gain.value = 0.15;
+      o.connect(g); g.connect(serveAudio.destination);
+      o.start(); o.stop(serveAudio.currentTime + (ms||600)/1000);
+    }catch(e){}
+  }
+  // browsers only allow sound after a tap/click, so unlock audio on the first interaction
+  document.addEventListener('click', ()=>{
+    try{
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if(AC){ serveAudio = serveAudio || new AC(); if(serveAudio.state==='suspended') serveAudio.resume(); }
+    }catch(e){}
+  }, {once:false});
   function render(){
     if(!localState) return;
     const state = localState;
@@ -1961,15 +1980,16 @@ html[data-theme="light"] .phase-line{color:#0b1f3a}
         serveBox.classList.toggle('timeup', left<=0);
         if(left<=0 && lastServeBeepFor !== state.serveStartedAt){
           lastServeBeepFor = state.serveStartedAt;
-          try{
-            const AC = window.AudioContext || window.webkitAudioContext;
-            if(AC){ serveAudio = serveAudio || new AC(); const o = serveAudio.createOscillator(), g = serveAudio.createGain();
-              o.type='square'; o.frequency.value=880; g.gain.value=0.15; o.connect(g); g.connect(serveAudio.destination);
-              o.start(); o.stop(serveAudio.currentTime+0.6); }
-          }catch(e){}
+          playBeep(600, 880);
         }
       } else {
         serveBox.classList.add('hidden');
+      }
+
+      // Beep when a warm-up phase finishes (same sound as the serve time-up beep)
+      if(state.warmBeepAt && state.warmBeepAt !== lastWarmBeepAt){
+        lastWarmBeepAt = state.warmBeepAt;
+        if(nowMs() - state.warmBeepAt < 10000) playBeep(1000, 880);
       }
 
       // Red "time wasted" stopwatch — counts UP once a technical timeout has ended
@@ -2091,6 +2111,7 @@ html[data-theme="light"] .phase-line{color:#0b1f3a}
       const endAt = state.timerStartedAt + state.timerRemaining*1000;
       const nxt = state.segments[state.segIndex+1];
       if(nxt && (seg.type==='warmup' || seg.type==='interval')){
+        if(seg.type==='warmup') state.warmBeepAt = endAt;
         state.segIndex += 1;
         state.timerRemaining = nxt.duration;
         state.timerRunning = nxt.duration > 0;
